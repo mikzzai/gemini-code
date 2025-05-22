@@ -9,6 +9,8 @@ import os
 import glob
 import re
 import logging
+import platform
+import subprocess
 from pathlib import Path
 # Note: MAX_CHARS_FOR_FULL_CONTENT is now defined in summarizer_tool.py,
 # so we import it or redefine it here if ViewTool uses it independently.
@@ -22,6 +24,9 @@ except ImportError:
 
 
 log = logging.getLogger(__name__)
+
+# Determine the operating system
+IS_WINDOWS = platform.system() == "Windows"
 
 class ViewTool(BaseTool):
     """Tool to view specific sections or small files. For large files, use summarize_code."""
@@ -153,7 +158,42 @@ class GrepTool(BaseTool):
         # No CWD logging needed here for now, focusing on ls/glob/summarize
         try:
             if ".." in path.split(os.path.sep): return f"Error: Invalid path '{path}'."
-            target_path = os.path.abspath(os.path.expanduser(path)); log.info(f"Grepping in {target_path} for '{pattern}' (Include: {include})")
+            target_path = os.path.abspath(os.path.expanduser(path))
+            
+            # For Windows, we can use either findstr or implement our own search
+            if IS_WINDOWS and not include and os.path.isdir(target_path):
+                log.info(f"Using Windows findstr for pattern '{pattern}' in {target_path}")
+                try:
+                    # Attempt to use findstr (Windows equivalent of grep)
+                    command = ['findstr', '/s', '/n', pattern, os.path.join(target_path, '*.*')]
+                    process = subprocess.run(
+                        command,
+                        capture_output=True,
+                        text=True,
+                        check=False,
+                        timeout=30,
+                        shell=True
+                    )
+                    
+                    if process.returncode in [0, 1]:  # findstr returns 1 if no matches found
+                        output = process.stdout.strip()
+                        if output:
+                            # Format the output to match grep style
+                            lines = output.splitlines()
+                            if len(lines) > 500:
+                                lines = lines[:500]
+                                lines.append("--- Match limit reached ---")
+                            return "\n".join(lines)
+                        else:
+                            return f"No matches found for pattern: {pattern}"
+                    else:
+                        # If findstr fails, fall back to Python implementation
+                        log.warning(f"findstr failed with code {process.returncode}, falling back to Python implementation")
+                except Exception as e:
+                    log.warning(f"Error using findstr: {e}, falling back to Python implementation")
+            
+            # Python implementation (works on all platforms)
+            log.info(f"Grepping in {target_path} for '{pattern}' (Include: {include})")
             if not os.path.isdir(target_path): return f"Error: Path is not a directory: {path}"
             try: regex = re.compile(pattern)
             except re.error as re_err: return f"Error: Invalid regex pattern: {pattern} ({re_err})"
@@ -197,7 +237,15 @@ class GlobTool(BaseTool):
             if ".." in path.split(os.path.sep): return f"Error: Invalid path '{path}'."
             target_path = os.path.abspath(os.path.expanduser(path)); log.info(f"Globbing in {target_path} for '{pattern}'")
             if not os.path.isdir(target_path): return f"Error: Path is not a directory: {path}"
-            search_pattern = os.path.join(target_path, pattern)
+
+            # Check if the pattern looks like a simple filename (no directory separators)
+            # and prepend '**/' for recursive search if needed.
+            if '/' not in pattern and '\\' not in pattern and '**' not in pattern:
+                search_pattern = os.path.join(target_path, '**', pattern)
+                log.info(f"Simple pattern detected, modified search pattern for recursion: {search_pattern}")
+            else:
+                search_pattern = os.path.join(target_path, pattern) # Keep original logic otherwise
+            
             matches = glob.glob(search_pattern, recursive=True)
             if matches:
                 relative_matches = sorted([os.path.relpath(m, target_path) for m in matches])
