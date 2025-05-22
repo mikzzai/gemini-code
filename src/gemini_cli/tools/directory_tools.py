@@ -4,9 +4,13 @@ Tools for directory operations.
 import os
 import logging
 import subprocess
+import platform
 from .base import BaseTool
 
 log = logging.getLogger(__name__)
+
+# Determine the operating system
+IS_WINDOWS = platform.system() == "Windows"
 
 class CreateDirectoryTool(BaseTool):
     """Tool to create a new directory."""
@@ -52,7 +56,7 @@ class CreateDirectoryTool(BaseTool):
             return f"Error creating directory: {str(e)}"
 
 class LsTool(BaseTool):
-    """Tool to list directory contents using 'ls -lA'."""
+    """Tool to list directory contents using 'ls -lA' on Unix/Linux or 'dir' on Windows."""
     name = "ls"
     description = "Lists the contents of a specified directory (long format, including hidden files)."
     args_schema: dict = {
@@ -64,7 +68,7 @@ class LsTool(BaseTool):
     required_args: list[str] = []
 
     def execute(self, path: str | None = None) -> str:
-        """Executes the 'ls -lA' command."""
+        """Executes the directory listing command appropriate for the OS."""
         target_path = "."  # Default to current directory
         if path:
             # Basic path safety - prevent navigating outside workspace root if needed
@@ -74,47 +78,55 @@ class LsTool(BaseTool):
                  log.warning(f"Attempted to access parent directory in ls path: {path}")
                  return f"Error: Invalid path '{path}'. Cannot access parent directories."
 
-        command = ['ls', '-lA', target_path]
-        log.info(f"Executing ls command: {' '.join(command)}")
+        # Use appropriate command based on OS
+        if IS_WINDOWS:
+            command = ['dir', '/a', target_path]
+            log.info(f"Executing dir command: {' '.join(command)}")
+        else:
+            command = ['ls', '-lA', target_path]
+            log.info(f"Executing ls command: {' '.join(command)}")
 
         try:
+            # On Windows, we need shell=True for dir command
             process = subprocess.run(
                 command,
                 capture_output=True,
                 text=True,
                 check=False,  # Don't raise exception on non-zero exit code
-                timeout=15    # Add a timeout
+                timeout=15,   # Add a timeout
+                shell=IS_WINDOWS  # Use shell on Windows
             )
 
             if process.returncode == 0:
-                log.info(f"ls command successful for path '{target_path}'.")
-                # Limit output size? ls -l can be long.
+                log.info(f"Directory listing successful for path '{target_path}'.")
+                # Limit output size? Directory listing can be long.
                 output = process.stdout.strip()
                 # Example truncation (adjust as needed)
                 if len(output.splitlines()) > 100:
-                     log.warning(f"ls output for '{target_path}' exceeded 100 lines. Truncating.")
+                     log.warning(f"Directory listing output for '{target_path}' exceeded 100 lines. Truncating.")
                      output = "\n".join(output.splitlines()[:100]) + "\n... (output truncated)"
                 return output
             else:
                 # Handle cases like directory not found specifically if possible
                 stderr_lower = process.stderr.lower()
-                if "no such file or directory" in stderr_lower:
-                     log.error(f"ls command failed: Directory not found '{target_path}'. Stderr: {process.stderr.strip()}")
+                if "no such file or directory" in stderr_lower or "cannot find the path" in stderr_lower:
+                     log.error(f"Directory listing failed: Directory not found '{target_path}'. Stderr: {process.stderr.strip()}")
                      return f"Error: Directory not found: '{target_path}'"
                 else:
-                     log.error(f"ls command failed with return code {process.returncode}. Path: '{target_path}'. Stderr: {process.stderr.strip()}")
+                     log.error(f"Directory listing failed with return code {process.returncode}. Path: '{target_path}'. Stderr: {process.stderr.strip()}")
                      error_detail = process.stderr.strip() if process.stderr else "(No stderr)"
-                     return f"Error executing ls command (Code: {process.returncode}): {error_detail}"
+                     return f"Error executing directory listing command (Code: {process.returncode}): {error_detail}"
 
         except FileNotFoundError:
-             # This means 'ls' itself wasn't found - unlikely but possible
-             log.error("'ls' command not found (FileNotFoundError). It might not be installed or in PATH.")
-             return "Error: 'ls' command not found. Please ensure it is installed and in the system's PATH."
+             # This means the command itself wasn't found
+             cmd_name = "dir" if IS_WINDOWS else "ls"
+             log.error(f"'{cmd_name}' command not found (FileNotFoundError). It might not be installed or in PATH.")
+             return f"Error: '{cmd_name}' command not found. Please ensure it is installed and in the system's PATH."
         except subprocess.TimeoutExpired:
-             log.error(f"ls command timed out for path '{target_path}' after 15 seconds.")
-             return f"Error: ls command timed out for path '{target_path}'."
+             log.error(f"Directory listing timed out for path '{target_path}' after 15 seconds.")
+             return f"Error: Directory listing timed out for path '{target_path}'."
         except Exception as e:
-            log.exception(f"An unexpected error occurred while executing ls command for path '{target_path}': {e}")
-            return f"An unexpected error occurred while executing ls: {str(e)}"
+            log.exception(f"An unexpected error occurred while executing directory listing for path '{target_path}': {e}")
+            return f"An unexpected error occurred while executing directory listing: {str(e)}"
 
     # Assuming BaseTool provides a working get_function_declaration implementation

@@ -56,15 +56,17 @@ DEFAULT_MODEL = "gemini-2.5-pro-exp-03-25"
 # --- ---
 
 # --- ASCII Art Definition ---
+# Using a simpler ASCII art that works better across different terminals and encodings
 GEMINI_CODE_ART = r"""
 
 [medium_purple]
-  ██████╗ ███████╗███╗   ███╗██╗███╗   ██╗██╗        ██████╗  ██████╗ ██████╗ ███████╗
- ██╔════╝ ██╔════╝████╗ ████║██║████╗  ██║██║       ██╔════╝ ██╔═══██╗██╔══██╗██╔════╝
- ██║ ███╗███████╗██╔████╔██║██║██╔██╗ ██║██║       ██║      ██║   ██║██║  ██║███████╗
- ██║  ██║██╔════╝██║╚██╔╝██║██║██║╚██╗██║██║       ██║      ██║   ██║██║  ██║██╔════╝
- ╚██████╔╝███████╗██║ ╚═╝ ██║██║██║ ╚████║██║       ╚██████╗ ╚██████╔╝██████╔╝███████╗
-  ╚═════╝ ╚══════╝╚═╝     ╚═╝╚═╝╚═╝  ╚═══╝╚═╝        ╚═════╝  ╚═════╝ ╚═════╝ ╚══════╝
+  ______  _______   ___   ___   ___   ___        ______  ______ ______ _______
+ / _____)/ ___   | |   | |   | |   | |   |      / _____)(___  /(___  /( __   /
+| |     | |   |  | |   | |   | |   | |   |     | |          | |    | || (  ) |
+| |     | |   |  | |   | |   | |   | |   |     | |          | |    | || | | |
+| |____ | |___| /  |   |_|   | |   |_|   |_    | |_____  __| |_   | || |_| |
+ \______)\______/   \_______/   \_______/       \______)(______)  |_|(______/
+                                                                             
 [/medium_purple]
 """
 # --- End ASCII Art ---
@@ -158,6 +160,9 @@ def start_interactive_session(model_name: str, console: Console):
     while True:
         try:
             user_input = console.input("[bold blue]You:[/bold blue] ")
+            
+            # Fix CRLF issues in pasted input
+            user_input = user_input.replace('\r\n', '\n').strip()
 
             if user_input.lower() == '/exit': break
             elif user_input.lower() == '/help': show_help(); continue
